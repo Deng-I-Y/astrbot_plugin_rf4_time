@@ -1,0 +1,21 @@
+name: astrbot_plugin_rf4_time
+display_name: 俄罗斯钓鱼4时间与提醒（astrbot_plugin_rf4_time）
+short_desc: RF4 游戏内时间换算、到点提醒、偏差补偿
+desc: 俄罗斯钓鱼4（RF4）游戏内时间换算与游戏时间提醒。游戏内 24 小时 = 现实 60 分钟，按锚点精确换算，支持 /钓鱼时间 查天亮天黑、/提醒 游戏时间到点主动推送、/补偿 修正慢慢攒出来的偏差。
+author: Deng-I-Y
+version: 1.3.0
+repo: https://github.com/Deng-I-Y/astrbot_plugin_rf4_time
+astrbot_version: ">=4.24.0"
+support_platforms:
+  - aiocqhttp
+  - qq_official
+  - telegram
+  - wecom
+  - lark
+  - dingtalk
+  - kook
+tags:
+  - 游戏
+  - 俄罗斯钓鱼4
+  - 时间
+  - 提醒
