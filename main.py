@@ -9,7 +9,7 @@
                         校准锚点 = 游戏时间 + 现实时间（精确到秒）。
                         用法：盯着游戏时钟，等它跳到 08:00 的那一瞬间，
                         看现实时钟读到几秒（如 14:30:41），把两个时间一起发过来
-                        原始校时时间戳：游戏内时间 20:29:00，现实时间 2026-10-29 16:51:13
+                        内置基准：游戏内时间 20:29:00 = 现实时间 2026-10-29 16:51:13
   /校时 17:42        —— 只发游戏时间会有很大误差：没有现实时间，只能拿收到消息那一刻当锚点
   /钓鱼时间          —— 查现在游戏内几点、离天亮或天黑还有多久
   /提醒 18:00 打窝   —— 游戏内到 18:00，现实里主动提醒你（18:00 也可以写 1800）
@@ -41,6 +41,11 @@ PLUGIN_DATA_DIR = os.path.join(
 )
 ANCHOR_FILE = os.path.join(PLUGIN_DATA_DIR, "anchor.json")
 REMINDER_FILE = os.path.join(PLUGIN_DATA_DIR, "reminders.json")
+
+# 内置基准锚点：游戏内 20:29:00 = 现实 2026-10-29 16:51:13（+08:00）
+# 让新装用户不校准也能直接用；有偏差再用 /校时 或 /补偿 修正。
+DEFAULT_ANCHOR_REAL = 1793263873.0
+DEFAULT_ANCHOR_GAME_MIN = 1229.0
 
 MILESTONES = ((6, "天亮"), (21, "天黑"))
 
@@ -185,8 +190,7 @@ def format_report(anchor_real: float, anchor_game: float, now: float | None = No
     return (
         f"游戏内 {_fmt_game(gm)}（现实 {real_clock}）"
         f"{offset_note}\n"
-        f"再过 {_fmt_duration(rdelta)}现实，游戏里{label}，那时是 {_fmt_game(gtarget)}\n"
-        f"换算比 1 游戏小时 = 现实 2.5 分钟，游戏一整天 = 现实 1 小时"
+        f"祝彦祖亦菲上星上篮！！"
     )
 
 
@@ -235,11 +239,13 @@ def save_reminders(items: list[dict]) -> None:
 
 
 def fallback_anchor(now: float | None = None) -> tuple[float, float]:
-    """没校准过就用「现实今天 0 点 = 游戏 0 点」兜底。"""
-    now = time.time() if now is None else now
-    local = time.localtime(now)
-    midnight = now - (local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec)
-    return midnight, 0.0
+    """没校准过时用内置基准锚点，保证开箱即用。
+
+    内置基准：游戏内 20:29:00 = 现实 2026-10-29 16:51:13（+08:00）。
+    游戏时间与现实时间比例固定（1 游戏分钟 = 2.5 现实秒），
+    所以只要比例不变，这个基准长期有效；有偏差用 /校时 或 /补偿 修。
+    """
+    return DEFAULT_ANCHOR_REAL, DEFAULT_ANCHOR_GAME_MIN
 
 
 class RF4Time(Star):
@@ -248,6 +254,8 @@ class RF4Time(Star):
         # 这版 AstrBot 的 Star 基类不会把 config 存成 self.config，自己留一份
         self.config = config
         self._watcher: asyncio.Task | None = None
+        # 当前是否在用内置基准（没校准过时为 True），用于在输出里提示
+        self._using_default = False
         self._apply_config()
 
     def _apply_config(self) -> None:
@@ -279,13 +287,20 @@ class RF4Time(Star):
 
     async def _anchor(self) -> tuple[float, float]:
         data = load_anchor()
+        self._using_default = not bool(data)
         if not data:
             return fallback_anchor()
         return float(data["anchor_real"]), float(data["anchor_game_min"])
 
-    async def _report(self) -> str:
+    async def _report(self, with_hint: bool = True) -> str:
         real, game = await self._anchor()
-        return format_report(real, game)
+        text = format_report(real, game)
+        if with_hint and self._using_default:
+            text += (
+                "\n（当前用的是内置基准，若和你看到的游戏时间有偏差，"
+                "用 /校时 重新校准，或 /补偿 微调）"
+            )
+        return text
 
     @filter.command("钓鱼时间", alias={"r4", "rf4", "游戏时间"})
     async def rf4_time_cmd(self, event: AstrMessageEvent):
@@ -347,7 +362,7 @@ class RF4Time(Star):
                 "看现实时钟读到几秒（如 14:30:41），把两个时间一起发过来\n"
                 "格式：/校时 08:00 14:30:41\n"
                 "只发游戏时间会有很大误差\n"
-                "原始校时时间戳：游戏内时间 20:29:00，现实时间 2026-10-29 16:51:13"
+                "内置基准：游戏内时间 20:29:00 = 现实时间 2026-10-29 16:51:13"
             )
             return
         now = time.time()
@@ -533,7 +548,7 @@ class RF4Time(Star):
 
         Args:
         """
-        return await self._report()
+        return await self._report(with_hint=False)
 
     @filter.llm_tool(name="rf4_set_reminder")
     async def rf4_set_reminder(self, event: AstrMessageEvent, game_time: str, text: str):
